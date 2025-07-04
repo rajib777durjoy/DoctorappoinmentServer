@@ -54,7 +54,8 @@ async function run() {
     const CategoryColletion = database.collection('categoris');
     const degreeColletion = database.collection('degreeCollection');
     const Payment_Details = database.collection('payment_details')
-
+    const doctor_apply_list = database.collection('doctor_apply_request');
+    const news_collection = database.collection('news_collection');
     // --------------------------------------------------------------------------//
     /// verifyAdmin ///
     const verifyAdmin = async (req, res, next) => {
@@ -62,6 +63,16 @@ async function run() {
       const query = { email: email }
       const admin = await userCollection.findOne(query);
       if (admin?.role !== 'admin') {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
+      next()
+    }
+    //-------- Both verify user like doctor and admin-----------//
+    const verifyboth = async(req,res,next)=>{
+      const email = res?.decoded?.Email;
+      const query = {email:email};
+      const both_user= await userCollection.findOne(query);
+      if(both_user?.role !== 'doctor' || both_user?.role !== 'admin'){
         return res.status(403).send({ message: 'forbidden access' });
       }
       next()
@@ -123,6 +134,49 @@ async function run() {
       res.send(result)
     })
 
+    //----------------- Update profile --------------------------------//
+    app.put('/user_profile_update_to_DB/:email',async(req,res)=>{
+      const email = req.params?.email;
+      const query ={email:email}
+      const information= req.body;
+      const updateData={
+        $set:{
+          name:information?.name,
+          phone:information?.phone,
+          bio:information?.bio,
+          photoURL:information?.photoURL
+        }
+      }
+      const updateDoctorCollection={
+        $set:{
+           name:information?.name,
+           image:information?.photoURL,
+        }
+      }
+      const updateNewsCollection={
+        $set:{
+          name:information?.name,
+          user_profile:information?.photoURL
+        }
+      }
+      const optional= {upsert:true}
+  //------ user_profile update related ------------------//
+      const user_up = await userCollection.updateOne(query,updateData,optional);
+       
+  //-------------doctor profile update related-----------------//
+   const doctor_up= await doctors.updateOne(query,updateDoctorCollection,optional);
+   console.log('doctor_up',doctor_up)
+
+  //------------------ news poster profile update related --------------//
+   const news_up= await news_collection.updateOne(query,updateNewsCollection,optional)
+  
+   console.log('news_up',news_up)
+
+   //----------------------------------------------------------------//
+      console.log('result',user_up)
+      res.send(user_up);
+    })
+
     /// user Check related api ///
     app.get('/userverify/:email', varifyToken, async (req, res) => {
       const userEmail = req.params?.email;
@@ -145,17 +199,30 @@ async function run() {
     //add doctor related api
     app.post('/doctor/addDoctor', varifyToken, async (req, res) => {
       const data = req.body;
+      console.log('add doctor data', data)
       const query = { email: data?.email }
-      const check = await doctors.findOne(query)
+      const check = await doctor_apply_list.findOne(query)
       if (check) {
         return res.send({ message: 'you already send request' })
       }
       // console.log('doctor info', data)
-      const result = await doctors.insertOne(data)
+      const result = await doctor_apply_list.insertOne(data)
       res.send(result)
     })
 
-    ///some doctors get related api ///
+    //---------------------------category searching related api ----------------------------//
+    app.get('/categroy/query',async(req,res)=>{
+      const category = req.query?.name;
+      console.log("category line:: 174",category)
+      const query= {Category:category}
+      const result = await doctors.find(query).toArray();
+      console.log('category result::',result)
+      res.send(result);
+    })
+
+
+    //---------------------some doctors get related api-------------------------------------//
+
     app.get('/doctorlist', async (req, res) => {
       const query = { role: 'doctor' }
       const result = await doctors.find(query).limit(4).toArray();
@@ -169,6 +236,14 @@ async function run() {
       res.send(result)
     })
 
+    
+    //--------------------show all post---------------------------------------------//
+    app.get('/post_preview/:email',async(req,res)=>{
+      const email = req.params?.email;
+      const query= {email:email};
+      const result = await news_collection.find(query).toArray();
+      res.send(result);
+    })
     ///doctors details related api 
     app.get('/doctor/details/:id', async (req, res) => {
       const Id = req?.params?.id;
@@ -183,7 +258,7 @@ async function run() {
 
     /// applid list related api ///
     app.get('/applidlist', varifyToken, verifyAdmin, async (req, res) => {
-      const result = await doctors.find().toArray()
+      const result = await doctor_apply_list.find().toArray()
       // console.log(result)
       res.send(result)
 
@@ -210,13 +285,13 @@ async function run() {
         const result = await doctors.updateOne(query, statusDone, options);
         return res.send(result)
       }
-      const result = await doctors.updateOne(query, updateData, options)
+      const result = await doctor_apply_list.updateOne(query, updateData, options)
       res.send(result)
     })
 
 
     /// add category from admin ///
-    app.post('/addCategory', async (req, res) => {
+    app.post('/addCategory',varifyToken,verifyboth, async (req, res) => {
       const categoryValue = req.body;
       // console.log('categoryValue',categoryValue.category)
       const result = await CategoryColletion.insertOne(categoryValue);
@@ -245,9 +320,9 @@ async function run() {
       res.send(result)
     })
 
-    /// Payment ///
+    ///--------------------------------- Payment------------------------- ///
 
-    app.post('/create-checkout-session', async (req, res) => {
+    app.post('/create-checkout-session',varifyToken,async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100);
       const paymentIntent = await stripe.paymentIntents.create({
@@ -264,17 +339,54 @@ async function run() {
     });
 
     // payment history //
-    app.post('/paymentHistory', async (req, res) => {
+    app.post('/paymentHistory/:id',varifyToken, async (req, res) => {
+      const id = req.params?.id;
       const Payment_data = req.body;
+      // const single_user = { appliedEmail: Payment_data?.appliedEmail };
+      // const user_varify = await Payment_Details.findOne(single_user);
+      // if(user_varify) {
+      //   return res.status(401).send({ message:'you already booked the doctor'})
+      // }
+      const query = { _id: new ObjectId(id) };
+      const verify_Doctor = await doctors.findOne(query);
+      if (verify_Doctor) {
+        const Update = {
+          $inc: { pasents: 1 }
+        }
+        const options = { upsert: true };
+        const result = await doctors.updateOne(query, Update, options);
+        return res.send(result)
+      }
       console.log('payment data', Payment_data)
       const result = await Payment_Details.insertOne(Payment_data);
+      if (!result) {
+        return res.status(401).send({ message: 'your payment in not store in Database' })
+      }
+      const Update = {
+        $inc: { pasents: 1 }
+      }
+      const options = { upsert: true };
+      const result2 = await Payment_Details.updateOne(query, Update, options);
       // console.log(result)
+      if (!result2) {
+        return res.status(404).send({ message: 'somethink is wrong !' })
+      }
       res.send(result);
     })
 
-    /// Doctor ///
-    //----get pasent list by doctor email --- //
-    app.get('/listfopasent/:email', async (req, res) => {
+    ///-------------------------------- Doctor------------------------------------ ///
+    
+    //-----------------------Doctor_information--------------------------------//
+    app.get('/doctor/information/:email',async(req,res)=>{
+      const email = req.params?.email;
+      const query = {email:email};
+      const result = await doctors.findOne(query);
+      console.log(result)
+      res.send(result);
+    })
+
+    //------------------Get pasent list by doctor email----------------------- //
+    app.get('/listfopasent/:email',varifyToken,verifyDoctor,async (req, res) => {
       const email = req.params?.email;
       const result = await doctors.aggregate([
         {
@@ -307,10 +419,10 @@ async function run() {
       // console.log('pasentlist:', result)
       res.send(result)
     })
-   /// --- doctor details balance --- ///
-   app.get('/detailsBalance/:email',async(req,res)=>{
-    const email= req.params?.email;
-    const result= await doctors.aggregate([
+    /// --- doctor details balance --- ///
+    app.get('/detailsBalance/:email', async (req, res) => {
+      const email = req.params?.email;
+      const result = await doctors.aggregate([
         {
           $match: { email: email }
         },
@@ -334,8 +446,8 @@ async function run() {
           }
         },
         {
-          $project:{
-            pasentList:1
+          $project: {
+            pasentList: 1
           }
         },
         {
@@ -344,10 +456,11 @@ async function run() {
       ]).toArray();
       // console.log('balance details',result)
       res.send(result)
-   })
-    /// Member ////
+    })
+
+    //---------------------------- Member -----------------------//
     //Get appointment list for member ///
-    app.get('/appointmentlist/:email', async (req, res) => {
+    app.get('/appointmentlist/:email',varifyToken,verifyMember, async (req, res) => {
       const m_email = req.params?.email;
 
       const result = await Payment_Details.aggregate([
@@ -356,12 +469,12 @@ async function run() {
         },
         {
           $addFields: {
-            doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id কে ObjectId বানাচ্ছি
+            doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id convert to ObjectId 
           }
         },
         {
           $lookup: {
-            from: 'doctorCollection', // doctor কালেকশনের নাম
+            from: 'doctorCollection', // doctor 
             localField: 'doctorObjectId',
             foreignField: "_id",  // doctor's _id field
             as: 'Doctor_info'
@@ -385,12 +498,12 @@ async function run() {
         },
         {
           $addFields: {
-            doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id কে ObjectId বানাচ্ছি
+            doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id convert to  ObjectId 
           }
         },
         {
           $lookup: {
-            from: 'doctorCollection', // doctor কালেকশনের নাম
+            from: 'doctorCollection', // doctor collection name
             localField: 'doctorObjectId',
             foreignField: "_id",  // doctor's _id field
             as: 'Doctor_info'
@@ -405,18 +518,16 @@ async function run() {
       res.send(result)
     })
 
-    /// ---- Static page ----
-    /// total payment ///
-    app.get('/totalPayment/totalDoctor/:email', async (req, res) => {
+    //---------------------------------Admin home----------------------------------//
+
+    //-------------- total payment for admin home---------------------//
+    app.get('/totalPayment/totalDoctor/:email', varifyToken, verifyAdmin, async (req, res) => {
       const Email = req.params?.email;
       // console.log('Email address', Email)
       const totalPay = await Payment_Details.aggregate([
         {
-          $match: { appliedEmail: Email }
-        },
-        {
           $group: {
-            _id: '$appliedEmail',
+            _id: null,
             totalPayment: { $sum: { $toInt: "$amount" } }
           }
         },
@@ -427,13 +538,85 @@ async function run() {
           }
         }
       ]).toArray()
-      const Doctor_list = await doctors.find({ appliedEmail: Email }).toArray()
-      const totaldoctor = Doctor_list.length + 1;
+      const Doctor_list = await doctors.find().toArray()
+      const totaldoctor = Doctor_list.length;
+      const totalUser = await userCollection.find().toArray();
+      const user = totalUser.length;
+      // console.log("user", user)
       // console.log('totalpayment:', totalPay, totaldoctor)
-      res.json([totalPay[0], totaldoctor])
+      res.json([totalPay[0], totaldoctor, user, Doctor_list])
+    })
+    //------------------------Top 10 doctor per balance------------------------------------------//
+    app.get('/per_doctor/balancelis/:email', varifyToken,verifyAdmin, async (req, res) => {
+      const Email = req.params?.email;
+      const query = { email: { $ne: Email } };
+      const result = await Payment_Details.find(query).limit(10).toArray();
+      // console.log('doctor payment per:::',result)
+      res.send(result);
     })
 
+    app.get('/doctor/pacentDetails/:id',varifyToken,verifyAdmin, async (req, res) => {
+      const id = req.params?.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await doctors.findOne(query);
+      // console.log("result", result);
+      res.send(result);
+    })
 
+    //------------------------Doctor dashboard -------------------------------------------------//
+    app.get('/pasent_details_info/:email',varifyToken,verifyDoctor, async (req, res) => {
+      const email = req.params?.email;
+      const query = { email: email };
+      const Doctor_check = await doctors.findOne(query);
+      if (!Doctor_check) {
+        return res.status(404).send({ message: 'Sorry bro!Doctor is not find' })
+      }
+      const id = Doctor_check?._id.toString();
+      const find_id = { doctor_id: id };
+      const find_doctor = await Payment_Details.find(find_id).toArray();
+      // console.log("find_doctor::", find_doctor)
+      res.send(find_doctor)
+    })
+    //-----------------------------single Doctor amount---------------------------//
+    app.get('/single_doctor_amount/:email',varifyToken,verifyDoctor, async (req, res) => {
+      const email = req.params?.email;
+      console.log(email)
+      const query = { email: email };
+      const result = await doctors.findOne(query);
+      const fee = parseInt(result?.fee);
+      const pasent = result?.pasents;
+      const totalBalance = fee * pasent;
+      // console.log(totalBalance)
+      res.send({ totalAmount: totalBalance });
+
+    });
+
+    //---------------------------news post by admin and doctor--------------------------//
+    app.post('/newspost/:email',varifyToken,verifyboth,async (req,res) => {
+      const email = req.params?.email;
+      console.log('newspost email',email)
+      const data = req.body;
+      const query={email:email}
+      const check_user = await userCollection.findOne(query)
+      console.log('check_user',check_user)
+        const role = check_user?.role;
+        const name = check_user?.name;
+        const user_profile = check_user?.photoURL
+        if(!user_profile){
+           console.log('user_profile problem')
+          return res.send({message:'user_profile problem'})
+        }
+        const dataInfo = { ...data,email, name,user_profile,role}
+
+        const result = await news_collection.insertOne(dataInfo);
+        console.log("result", result)
+         res.send(result)
+     
+      //  const dataInfo ={...data,email}
+      //  const result = await news_collection.insertOne(dataInfo);
+      //  console.log("result",result)
+      //  res.send(result)
+    })
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
