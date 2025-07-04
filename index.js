@@ -459,6 +459,13 @@ async function run() {
     })
 
     //---------------------------- Member -----------------------//
+   //-----------------------Member Dashborad related API---------------------------//
+   app.get('/mybookingInfo/:email',async(req,res)=>{
+    const email= req.params?.email;
+    const query ={appliedEmail:email};
+    const result = await Payment_Details.find(query).toArray()
+    res.send(result);
+   })
     //Get appointment list for member ///
     app.get('/appointmentlist/:email',varifyToken,verifyMember, async (req, res) => {
       const m_email = req.params?.email;
