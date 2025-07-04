@@ -180,7 +180,7 @@ async function run() {
     /// user Check related api ///
     app.get('/userverify/:email', varifyToken, async (req, res) => {
       const userEmail = req.params?.email;
-      // console.log('usercheck Email',userEmail)
+      
       const query = { email: userEmail }
       const admin = await userCollection.findOne(query);
       const doctor = await userCollection.findOne(query);
@@ -205,7 +205,7 @@ async function run() {
       if (check) {
         return res.send({ message: 'you already send request' })
       }
-      // console.log('doctor info', data)
+
       const result = await doctor_apply_list.insertOne(data)
       res.send(result)
     })
@@ -259,7 +259,7 @@ async function run() {
     /// applid list related api ///
     app.get('/applidlist', varifyToken, verifyAdmin, async (req, res) => {
       const result = await doctor_apply_list.find().toArray()
-      // console.log(result)
+     
       res.send(result)
 
     })
@@ -267,7 +267,7 @@ async function run() {
     // applid update //
     app.patch('/status/Update/:applid_id', varifyToken, verifyAdmin, async (req, res) => {
       const data = req.body;
-      const id = req.params.applid_id;
+      const id = req.params?.applid_id;
       const query = { _id: new ObjectId(id) }
       const updateData = {
         $set: { status: data?.status }
@@ -293,18 +293,18 @@ async function run() {
     /// add category from admin ///
     app.post('/addCategory',varifyToken,verifyboth, async (req, res) => {
       const categoryValue = req.body;
-      // console.log('categoryValue',categoryValue.category)
+      
       const result = await CategoryColletion.insertOne(categoryValue);
-      // console.log('categoryResult',result)
+
       res.send(result)
 
     })
     /// add degree form admin //
     app.post('/addDegree', async (req, res) => {
       const degreelist = req.body;
-      // console.log('degreelist',degreelist)
+
       const result = await degreeColletion.insertOne(degreelist);
-      // console.log('add degree',result);
+      
       res.send(result)
     })
 
