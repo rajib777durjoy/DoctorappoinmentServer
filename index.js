@@ -178,7 +178,7 @@ async function run() {
     })
 
     /// user Check related api ///
-    app.get('/userverify/:email', varifyToken, async (req, res) => {
+    app.get('/userverify/:email',async (req, res) => {
       const userEmail = req.params?.email;
       
       const query = { email: userEmail }
