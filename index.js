@@ -11,7 +11,7 @@ const cors = require('cors');
 //HYclI7nHPo7vRMJD
 
 app.use(cors({
-  origin: ['http://localhost:5173','https://doctorappoinmentproject.onrender.com','https://doctorproject-a4e4f.web.app/'],
+  origin: ['https://doctorproject-a4e4f.web.app'],
   credentials: true
 }))
 app.use(express.json())
