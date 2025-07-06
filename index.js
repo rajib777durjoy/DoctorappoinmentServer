@@ -11,9 +11,10 @@ const cors = require('cors');
 //HYclI7nHPo7vRMJD
 
 app.use(cors({
-  origin: ['https://doctorproject-a4e4f.web.app'],
+  origin: ['http://localhost:5173', 'https://doctorproject-a4e4f.web.app'],
   credentials: true
 }))
+
 app.use(express.json())
 app.use(cookieParser());
 
@@ -68,11 +69,11 @@ async function run() {
       next()
     }
     //-------- Both verify user like doctor and admin-----------//
-    const verifyboth = async(req,res,next)=>{
+    const verifyboth = async (req, res, next) => {
       const email = res?.decoded?.Email;
-      const query = {email:email};
-      const both_user= await userCollection.findOne(query);
-      if(both_user?.role !== 'doctor' || both_user?.role !== 'admin'){
+      const query = { email: email };
+      const both_user = await userCollection.findOne(query);
+      if (both_user?.role !== 'doctor' || both_user?.role !== 'admin') {
         return res.status(403).send({ message: 'forbidden access' });
       }
       next()
@@ -128,78 +129,76 @@ async function run() {
     //----------------------------------------------------------------------------//
 
     // add user ///
-    app.post('/addUser', async (req, res) => {
+    app.post('/addUser/:email', async (req, res) => {
       const data = req.body;
+      const email = req.params?.email;
+      const query = { email: email }
+      const check = await userCollection.findOne(query);
+      if (check) {
+        return res.send({ message: 'you already user' });
+      }
       const result = await userCollection.insertOne(data);
       res.send(result)
     })
 
     //----------------- Update profile --------------------------------//
-    app.put('/user_profile_update_to_DB/:email',async(req,res)=>{
+    app.put('/user_profile_update_to_DB/:email', async (req, res) => {
       const email = req.params?.email;
-      const query ={email:email}
-      const information= req.body;
-      const updateData={
-        $set:{
-          name:information?.name,
-          phone:information?.phone,
-          bio:information?.bio,
-          photoURL:information?.photoURL
+      const query = { email: email }
+      const information = req.body;
+      const updateData = {
+        $set: {
+          name: information?.name,
+          phone: information?.phone,
+          bio: information?.bio,
+          photoURL: information?.photoURL
         }
       }
-      const updateDoctorCollection={
-        $set:{
-           name:information?.name,
-           image:information?.photoURL,
+      const updateDoctorCollection = {
+        $set: {
+          name: information?.name,
+          image: information?.photoURL,
         }
       }
-      const updateNewsCollection={
-        $set:{
-          name:information?.name,
-          user_profile:information?.photoURL
+      const updateNewsCollection = {
+        $set: {
+          name: information?.name,
+          user_profile: information?.photoURL
         }
       }
-      const optional= {upsert:true}
-  //------ user_profile update related ------------------//
-      const user_up = await userCollection.updateOne(query,updateData,optional);
-       
-  //-------------doctor profile update related-----------------//
-   const doctor_up= await doctors.updateOne(query,updateDoctorCollection,optional);
-   console.log('doctor_up',doctor_up)
+      const optional = { upsert: true }
+      //------ user_profile update related ------------------//
+      const user_up = await userCollection.updateOne(query, updateData, optional);
 
-  //------------------ news poster profile update related --------------//
-   const news_up= await news_collection.updateOne(query,updateNewsCollection,optional)
-  
-   console.log('news_up',news_up)
+      //-------------doctor profile update related-----------------//
+      const doctor_up = await doctors.updateOne(query, updateDoctorCollection, optional);
+      // console.log('doctor_up', doctor_up)
 
-   //----------------------------------------------------------------//
-      console.log('result',user_up)
+      //------------------ news poster profile update related --------------//
+      const news_up = await news_collection.updateOne(query, updateNewsCollection, optional)
+
+      // console.log('news_up', news_up)
+
+      //----------------------------------------------------------------//
+      // console.log('result', user_up)
       res.send(user_up);
     })
 
-    /// user Check related api ///
-    app.get('/userverify/:email',async (req, res) => {
-      const userEmail = req.params?.email;
-      
-      const query = { email: userEmail }
-      const admin = await userCollection.findOne(query);
-      const doctor = await userCollection.findOne(query);
-      const member = await userCollection.findOne(query);
-      if (admin?.role === 'admin') {
-        return res.send({ user: 'admin' })
-      }
-      if (doctor?.role === 'doctor') {
-        return res.send({ user: 'doctor' })
-      }
-      if (member?.role === 'member') {
-        return res.send({ user: 'member' })
-      }
-
+    //-----------------------verify user checking--------------------------//
+    app.get('/verify_user/:email', async (req, res) => {
+      const user_email = req.params?.email;
+      // console.log("user email", user_email);
+      const query = { email: user_email };
+      const user_Type = await userCollection.findOne(query);
+      // console.log("user_Type",user_Type)
+      const role = user_Type?.role === 'admin' || user_Type?.role === 'doctor' ? user_Type.role : 'member';
+      console.log(role)
+      res.send({ role })
     })
     //add doctor related api
     app.post('/doctor/addDoctor', varifyToken, async (req, res) => {
       const data = req.body;
-      console.log('add doctor data', data)
+      // console.log('add doctor data', data)
       const query = { email: data?.email }
       const check = await doctor_apply_list.findOne(query)
       if (check) {
@@ -211,12 +210,12 @@ async function run() {
     })
 
     //---------------------------category searching related api ----------------------------//
-    app.get('/categroy/query',async(req,res)=>{
+    app.get('/categroy/query', async (req, res) => {
       const category = req.query?.name;
-      console.log("category line:: 174",category)
-      const query= {Category:category}
+      // console.log("category line:: 174",category)
+      const query = { Category: category }
       const result = await doctors.find(query).toArray();
-      console.log('category result::',result)
+      // console.log('category result::',result)
       res.send(result);
     })
 
@@ -236,12 +235,12 @@ async function run() {
       res.send(result)
     })
 
-    
+
     //--------------------show all post---------------------------------------------//
-    app.get('/post_preview/:email',async(req,res)=>{
+    app.get('/post_preview/:email', async (req, res) => {
       const email = req.params?.email;
-      const query= {email:email};
-      const result = await news_collection.find(query).toArray();
+      const query = { email: email };
+      const result = await news_collection.find().toArray();
       res.send(result);
     })
     ///doctors details related api 
@@ -258,8 +257,8 @@ async function run() {
 
     /// applid list related api ///
     app.get('/applidlist', varifyToken, verifyAdmin, async (req, res) => {
-      const result = await doctor_apply_list.find().toArray()
-     
+      const result = await doctor_apply_list.find().toArray();
+
       res.send(result)
 
     })
@@ -269,31 +268,42 @@ async function run() {
       const data = req.body;
       const id = req.params?.applid_id;
       const query = { _id: new ObjectId(id) }
-      const updateData = {
-        $set: { status: data?.status }
-      }
-      const statusDone = {
-        $set: {
-          status: data?.status,
-          role: 'doctor'
+      
+      // console.log('data', data.status)
+      // ---------------- Status Inprogres or Panding ------------------------------//
+      if (data?.status == 'Inprogres' || data?.status == 'panding') {
+        const updateStatus = {
+          $set: {
+            status: data?.status,
+          }
         }
-      }
-      const options = { upsert: true };
-      // console.log('data',data,id)
-      if (data.status == 'done') {
-
-        const result = await doctors.updateOne(query, statusDone, options);
+        const optional = { upsert: true }
+        const result = await doctor_apply_list.updateOne(query, updateStatus, optional);
         return res.send(result)
       }
-      const result = await doctor_apply_list.updateOne(query, updateData, options)
-      res.send(result)
+      // ---------------------------- Status Done ------------------------------//
+      const updateStatus = {
+        $set: {
+          status: data?.status,
+          role:'doctor'
+        }
+      }
+      const optional = { upsert: true }
+      const result = await doctor_apply_list.updateOne(query, updateStatus, optional);
+      if(!result){
+       return res.send({message:'unSuccessful'})
+      }
+      const findInfo= await doctor_apply_list.findOne(query);
+      // console.log('findInfo::',findInfo)
+      const convertTodoctor= await doctors.insertOne(findInfo)
+      res.send(convertTodoctor)
     })
 
 
     /// add category from admin ///
-    app.post('/addCategory',varifyToken,verifyboth, async (req, res) => {
+    app.post('/addCategory', varifyToken, verifyboth, async (req, res) => {
       const categoryValue = req.body;
-      
+
       const result = await CategoryColletion.insertOne(categoryValue);
 
       res.send(result)
@@ -304,7 +314,7 @@ async function run() {
       const degreelist = req.body;
 
       const result = await degreeColletion.insertOne(degreelist);
-      
+
       res.send(result)
     })
 
@@ -322,7 +332,7 @@ async function run() {
 
     ///--------------------------------- Payment------------------------- ///
 
-    app.post('/create-checkout-session',varifyToken,async (req, res) => {
+    app.post('/create-checkout-session', varifyToken, async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100);
       const paymentIntent = await stripe.paymentIntents.create({
@@ -339,7 +349,7 @@ async function run() {
     });
 
     // payment history //
-    app.post('/paymentHistory/:id',varifyToken, async (req, res) => {
+    app.post('/paymentHistory/:id', varifyToken, async (req, res) => {
       const id = req.params?.id;
       const Payment_data = req.body;
       // const single_user = { appliedEmail: Payment_data?.appliedEmail };
@@ -375,18 +385,18 @@ async function run() {
     })
 
     ///-------------------------------- Doctor------------------------------------ ///
-    
+
     //-----------------------Doctor_information--------------------------------//
-    app.get('/doctor/information/:email',async(req,res)=>{
+    app.get('/doctor/information/:email', async (req, res) => {
       const email = req.params?.email;
-      const query = {email:email};
+      const query = { email: email };
       const result = await doctors.findOne(query);
       console.log(result)
       res.send(result);
     })
 
     //------------------Get pasent list by doctor email----------------------- //
-    app.get('/listfopasent/:email',varifyToken,verifyDoctor,async (req, res) => {
+    app.get('/listfopasent/:email', varifyToken, verifyDoctor, async (req, res) => {
       const email = req.params?.email;
       const result = await doctors.aggregate([
         {
@@ -459,15 +469,15 @@ async function run() {
     })
 
     //---------------------------- Member -----------------------//
-   //-----------------------Member Dashborad related API---------------------------//
-   app.get('/mybookingInfo/:email',async(req,res)=>{
-    const email= req.params?.email;
-    const query ={appliedEmail:email};
-    const result = await Payment_Details.find(query).toArray()
-    res.send(result);
-   })
+    //-----------------------Member Dashborad related API---------------------------//
+    app.get('/mybookingInfo/:email', async (req, res) => {
+      const email = req.params?.email;
+      const query = { appliedEmail: email };
+      const result = await Payment_Details.find(query).toArray()
+      res.send(result);
+    })
     //Get appointment list for member ///
-    app.get('/appointmentlist/:email',varifyToken,verifyMember, async (req, res) => {
+    app.get('/appointmentlist/:email', varifyToken, verifyMember, async (req, res) => {
       const m_email = req.params?.email;
 
       const result = await Payment_Details.aggregate([
@@ -554,7 +564,7 @@ async function run() {
       res.json([totalPay[0], totaldoctor, user, Doctor_list])
     })
     //------------------------Top 10 doctor per balance------------------------------------------//
-    app.get('/per_doctor/balancelis/:email', varifyToken,verifyAdmin, async (req, res) => {
+    app.get('/per_doctor/balancelis/:email', varifyToken, verifyAdmin, async (req, res) => {
       const Email = req.params?.email;
       const query = { email: { $ne: Email } };
       const result = await Payment_Details.find(query).limit(10).toArray();
@@ -562,7 +572,7 @@ async function run() {
       res.send(result);
     })
 
-    app.get('/doctor/pacentDetails/:id',varifyToken,verifyAdmin, async (req, res) => {
+    app.get('/doctor/pacentDetails/:id', varifyToken, verifyAdmin, async (req, res) => {
       const id = req.params?.id;
       const query = { _id: new ObjectId(id) };
       const result = await doctors.findOne(query);
@@ -571,7 +581,7 @@ async function run() {
     })
 
     //------------------------Doctor dashboard -------------------------------------------------//
-    app.get('/pasent_details_info/:email',varifyToken,verifyDoctor, async (req, res) => {
+    app.get('/pasent_details_info/:email', varifyToken, verifyDoctor, async (req, res) => {
       const email = req.params?.email;
       const query = { email: email };
       const Doctor_check = await doctors.findOne(query);
@@ -585,7 +595,7 @@ async function run() {
       res.send(find_doctor)
     })
     //-----------------------------single Doctor amount---------------------------//
-    app.get('/single_doctor_amount/:email',varifyToken,verifyDoctor, async (req, res) => {
+    app.get('/single_doctor_amount/:email', varifyToken, verifyDoctor, async (req, res) => {
       const email = req.params?.email;
       console.log(email)
       const query = { email: email };
@@ -599,26 +609,26 @@ async function run() {
     });
 
     //---------------------------news post by admin and doctor--------------------------//
-    app.post('/newspost/:email',varifyToken,verifyboth,async (req,res) => {
+    app.post('/newspost/:email', varifyToken, verifyboth, async (req, res) => {
       const email = req.params?.email;
-      console.log('newspost email',email)
+      // console.log('newspost email',email)
       const data = req.body;
-      const query={email:email}
+      const query = { email: email }
       const check_user = await userCollection.findOne(query)
-      console.log('check_user',check_user)
-        const role = check_user?.role;
-        const name = check_user?.name;
-        const user_profile = check_user?.photoURL
-        if(!user_profile){
-           console.log('user_profile problem')
-          return res.send({message:'user_profile problem'})
-        }
-        const dataInfo = { ...data,email, name,user_profile,role}
+      // console.log('check_user',check_user)
+      const role = check_user?.role;
+      const name = check_user?.name;
+      const user_profile = check_user?.photoURL
+      if (!user_profile) {
+        //  console.log('user_profile problem')
+        return res.send({ message: 'user_profile problem' })
+      }
+      const dataInfo = { ...data, email, name, user_profile, role }
 
-        const result = await news_collection.insertOne(dataInfo);
-        console.log("result", result)
-         res.send(result)
-     
+      const result = await news_collection.insertOne(dataInfo);
+      // console.log("result", result)
+      res.send(result)
+
       //  const dataInfo ={...data,email}
       //  const result = await news_collection.insertOne(dataInfo);
       //  console.log("result",result)
