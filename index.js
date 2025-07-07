@@ -103,13 +103,11 @@ async function run() {
     //---------------------------------------------------------------------//
 
     /// json web token create related api here ///
-    app.get('/jwt/:email', async (req, res) => {
-      const Email = req.params?.email;
-      if (!Email) {
-        return res.status(400).send({ message: 'Email is required' });
-      }
+    app.get('/jwt', async (req, res) => {
+      const userEmail = req.body;
+      
       // console.log('jwt email',Email)
-      const token = await jwt.sign({ Email }, process.env.JWT_Secret_Key, {
+      const token = await jwt.sign(userEmail, process.env.JWT_Secret_Key, {
         expiresIn: '1d'
       })
       // console.log('token',token)
