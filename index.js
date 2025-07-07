@@ -11,7 +11,7 @@ const cors = require('cors');
 //HYclI7nHPo7vRMJD
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://doctorproject-a4e4f.web.app'],
+  origin: ['https://doctorproject-a4e4f.web.app/'],
   credentials: true
 }))
 
@@ -142,7 +142,7 @@ async function run() {
     })
 
     //----------------- Update profile --------------------------------//
-    app.put('/user_profile_update_to_DB/:email', async (req, res) => {
+    app.put('/user_profile_update_to_DB/:email',varifyToken, async (req, res) => {
       const email = req.params?.email;
       const query = { email: email }
       const information = req.body;
@@ -185,7 +185,7 @@ async function run() {
     })
 
     //-----------------------verify user checking--------------------------//
-    app.get('/verify_user/:email', async (req, res) => {
+    app.get('/verify_user/:email',varifyToken, async (req, res) => {
       const user_email = req.params?.email;
       // console.log("user email", user_email);
       const query = { email: user_email };
@@ -289,11 +289,14 @@ async function run() {
         }
       }
       const optional = { upsert: true }
+
       const result = await doctor_apply_list.updateOne(query, updateStatus, optional);
-      if(!result){
-       return res.send({message:'unSuccessful'})
+     
+      if(!result && !userColl){
+       return res.send({message:'Unsuccessful'})
       }
       const findInfo= await doctor_apply_list.findOne(query);
+       const userColl= await userCollection.updateOne({email:findInfo?.email},updateStatus,optional);
       // console.log('findInfo::',findInfo)
       const convertTodoctor= await doctors.insertOne(findInfo)
       res.send(convertTodoctor)
@@ -387,7 +390,7 @@ async function run() {
     ///-------------------------------- Doctor------------------------------------ ///
 
     //-----------------------Doctor_information--------------------------------//
-    app.get('/doctor/information/:email', async (req, res) => {
+    app.get('/doctor/information/:email',varifyToken,verifyDoctor,async (req, res) => {
       const email = req.params?.email;
       const query = { email: email };
       const result = await doctors.findOne(query);
@@ -430,7 +433,7 @@ async function run() {
       res.send(result)
     })
     /// --- doctor details balance --- ///
-    app.get('/detailsBalance/:email', async (req, res) => {
+    app.get('/detailsBalance/:email',varifyToken,verifyDoctor, async (req, res) => {
       const email = req.params?.email;
       const result = await doctors.aggregate([
         {
@@ -468,9 +471,39 @@ async function run() {
       res.send(result)
     })
 
+    //----------------------doctor appoinment list----------------------------------//
+    app.get('/doctor/appointment_List/:email',async(req,res)=>{
+       const m_email = req.params?.email;
+
+      const result = await Payment_Details.aggregate([
+        {
+          $match: { appliedEmail: m_email }
+        },
+        {
+          $addFields: {
+            doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id convert to ObjectId 
+          }
+        },
+        {
+          $lookup: {
+            from: 'doctorCollection', // doctor 
+            localField: 'doctorObjectId',
+            foreignField: "_id",  // doctor's _id field
+            as: 'Doctor_info'
+          }
+        },
+        {
+          $unwind: "$Doctor_info"
+        }
+      ]).toArray()
+
+      // console.log(result)
+      res.send(result)
+    })
+
     //---------------------------- Member -----------------------//
     //-----------------------Member Dashborad related API---------------------------//
-    app.get('/mybookingInfo/:email', async (req, res) => {
+    app.get('/mybookingInfo/:email',varifyToken,verifyMember,async (req, res) => {
       const email = req.params?.email;
       const query = { appliedEmail: email };
       const result = await Payment_Details.find(query).toArray()
@@ -507,7 +540,7 @@ async function run() {
     })
 
     /// member-payment-list related api ---
-    app.get('/member_payment_list/:email', async (req, res) => {
+    app.get('/member_payment_list/:email',varifyToken,verifyMember, async (req, res) => {
       const email = req?.params?.email;
       const result = await Payment_Details.aggregate([
         {
