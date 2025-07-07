@@ -10,7 +10,7 @@ const cors = require('cors');
 
 
 app.use(cors({
-  origin: ['http://localhost:5173/','https://doctorproject-a4e4f.web.app/'],
+  origin: ['http://localhost:5173','https://doctorproject-a4e4f.web.app'],
    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }))
