@@ -7,15 +7,14 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 4500;
 const cors = require('cors');
-//DoctorBooking
-//HYclI7nHPo7vRMJD
+
 
 app.use(cors({
-  origin: ['https://doctorproject-a4e4f.web.app/'],
+  origin: ['http://localhost:5173/','https://doctorproject-a4e4f.web.app/'],
    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }))
-app.use(cors());
+
 app.use(express.json())
 app.use(cookieParser());
 
