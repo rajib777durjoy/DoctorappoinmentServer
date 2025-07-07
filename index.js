@@ -12,9 +12,10 @@ const cors = require('cors');
 
 app.use(cors({
   origin: ['https://doctorproject-a4e4f.web.app/'],
+   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }))
-
+app.use(cors());
 app.use(express.json())
 app.use(cookieParser());
 
