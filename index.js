@@ -10,7 +10,7 @@ const cors = require('cors');
 
 
 app.use(cors({
-  origin: ['https://doctorproject-a4e4f.web.app'],
+  origin: ['http://localhost:5173','https://doctorproject-a4e4f.web.app'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 }))
@@ -187,13 +187,13 @@ async function run() {
 
     //-----------------------verify user checking--------------------------//
     app.get('/verify_user/:email', varifyToken, async (req, res) => {
-      const user_email = req.params?.email;
+      const user_email = req?.params?.email;
       // console.log("user email", user_email);
       const query = { email: user_email };
       const user_Type = await userCollection.findOne(query);
       // console.log("user_Type",user_Type)
       const role = user_Type?.role === 'admin' || user_Type?.role === 'doctor' ? user_Type.role : 'member';
-      console.log(role)
+      console.log('user role 196::',role)
       res.send({ role })
     })
     //add doctor related api
