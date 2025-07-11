@@ -7,12 +7,13 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const port = process.env.PORT || 4500;
 const cors = require('cors');
+const { GoogleGenAI } = require("@google/genai");
 
 
 app.use(cors({
-  origin: ['https://doctorproject-a4e4f.web.app'],
+  origin: ['http://localhost:5173','https://doctorproject-a4e4f.web.app'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], 
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
 }))
 
 app.use(express.json())
@@ -27,7 +28,8 @@ const varifyToken = (req, res, next) => {
     if (err) {
       return res.status(401).send({ message: 'Unauthorized access' })
     }
-    res.decoded = decoded
+    req.decoded = decoded
+    // console.log("token decoded email:::",decoded)
     next()
   })
 }
@@ -57,10 +59,11 @@ async function run() {
     const Payment_Details = database.collection('payment_details')
     const doctor_apply_list = database.collection('doctor_apply_request');
     const news_collection = database.collection('news_collection');
+    const Report_Details= database.collection('Report_collection');
     // --------------------------------------------------------------------------//
     /// verifyAdmin ///
     const verifyAdmin = async (req, res, next) => {
-      const email = res?.decoded?.Email;
+      const email = req?.decoded?.email;
       const query = { email: email }
       const admin = await userCollection.findOne(query);
       if (admin?.role !== 'admin') {
@@ -70,7 +73,8 @@ async function run() {
     }
     //-------- Both verify user like doctor and admin-----------//
     const verifyboth = async (req, res, next) => {
-      const email = res?.decoded?.Email;
+      const email = req?.decoded?.email;
+      // console.log('doctor token email::',email)
       const query = { email: email };
       const both_user = await userCollection.findOne(query);
       if (both_user?.role !== 'doctor' || both_user?.role !== 'admin') {
@@ -81,7 +85,7 @@ async function run() {
 
     /// doctor verify ///
     const verifyDoctor = async (req, res, next) => {
-      const email = res?.decoded?.Email;
+      const email = req?.decoded?.email;
       const query = { email: email };
       const Doctor = await userCollection.findOne(query);
       if (Doctor?.role !== 'doctor') {
@@ -92,7 +96,9 @@ async function run() {
 
     /// member verify ///
     const verifyMember = async (req, res, next) => {
-      const email = res?.decoded?.Email;
+      const email = req?.decoded?.email;
+      // console.log('member token email::',email)
+      // console.log('member token req::',req?.decoded?.email)
       const query = { email: email };
       const Member = await userCollection.findOne(query);
       if (Member?.role !== 'member') {
@@ -103,9 +109,11 @@ async function run() {
     //---------------------------------------------------------------------//
 
     /// json web token create related api here ///
-    app.get('/jwt', async (req, res) => {
-      const userEmail = req.body;
-      
+    app.get('/jwt/:email', async (req, res) => {
+      // const userEmail = req.body;
+      // console.log('token params::',req.params?.email)
+      const userEmail = { email: req.params?.email }
+      // console.log("userEmail",userEmail)
       // console.log('jwt email',Email)
       const token = await jwt.sign(userEmail, process.env.JWT_Secret_Key, {
         expiresIn: '1d'
@@ -186,14 +194,14 @@ async function run() {
     })
 
     //-----------------------verify user checking--------------------------//
-    app.get('/verify_user/:email', varifyToken, async (req, res) => {
-      const user_email = req?.params?.email;
-      // console.log("user email", user_email);
-      const query = { email: user_email };
+    app.get('/verify_user/:email', async (req, res) => {
+      const email = req.params?.email;
+      // console.log("user email",email);
+      const query = { email: email };
       const user_Type = await userCollection.findOne(query);
       // console.log("user_Type",user_Type)
-      const role = user_Type?.role === 'admin' || user_Type?.role === 'doctor' ? user_Type.role : 'member';
-      console.log('user role 196::',role)
+      const role = user_Type?.role == 'admin' || user_Type?.role == 'doctor' ? user_Type.role : 'member';
+      // console.log('user role 196::',role)
       res.send({ role })
     })
     //add doctor related api
@@ -371,7 +379,7 @@ async function run() {
         const result = await doctors.updateOne(query, Update, options);
         return res.send(result)
       }
-      console.log('payment data', Payment_data)
+      // console.log('payment data', Payment_data)
       const result = await Payment_Details.insertOne(Payment_data);
       if (!result) {
         return res.status(401).send({ message: 'your payment in not store in Database' })
@@ -395,7 +403,7 @@ async function run() {
       const email = req.params?.email;
       const query = { email: email };
       const result = await doctors.findOne(query);
-      console.log(result)
+      // console.log(result)
       res.send(result);
     })
 
@@ -473,7 +481,7 @@ async function run() {
     })
 
     //----------------------doctor appoinment list----------------------------------//
-    app.get('/doctor/appointment_List/:email', async (req, res) => {
+    app.get('/doctor/appointment_List/:email', varifyToken, verifyDoctor, async (req, res) => {
       const m_email = req.params?.email;
 
       const result = await Payment_Details.aggregate([
@@ -498,7 +506,7 @@ async function run() {
         }
       ]).toArray()
 
-      // console.log(result)
+      // console.log('doctor appoinment"""',result)
       res.send(result)
     })
 
@@ -568,6 +576,81 @@ async function run() {
       // console.log('payment list', result)
       res.send(result)
     })
+
+    //------------------------------AI-Powered Health Checkup-----------------------------//
+    app.post('/health/summary/',varifyToken,verifyMember,async (req, res) => {
+      const language = req.query?.language;
+      const healthInfo = req.body;
+      console.log('language::', language, "healthInfo::", healthInfo)
+      const AI = new GoogleGenAI({
+        apiKey: process.env.Gemini_API_Key
+      })
+      const response = await AI.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `
+Patient's Health Data:
+- Height: ${healthInfo.height} cm
+- Weight: ${healthInfo.weight} kg
+- Blood Pressure: ${healthInfo.bloodPressure}
+- Pulse: ${healthInfo.pulse}
+- Temperature: ${healthInfo.temperature}
+- Sugar: ${healthInfo.sugar}
+- Oxygen: ${healthInfo.oxygen}
+- Known Condition: ${healthInfo.health_Conditions || "None"}
+
+Please analyze this and act as a virtual doctor.
+Return plain text only, no Markdown formatting.
+Keep your answer around 200 words.
+Analyze patient condition, predict future risks, and give 3/5 practical health tips.Text language is${language || 'English'}`,
+              },
+            ],
+          },
+        ],
+        config: {
+          systemInstruction: `If user type like that question is Who are you or what's your name or who is your creator then your answer (You are HealthBot, a virtual health assistant created by Durjoy Chando.) this type , else is " " focus next 
+You behave like a real doctor — always helpful, informative, and friendly.
+Do not use Markdown. Keep responses clear, concise, and calm like a caring doctor. And You will check all the user's health inputs and tell the patient how their overall health condition is — such as whether it is Normal, Needs Attention, or Dangerous 
+Limit your reply to about 200 words.
+        `.trim()
+        },
+      });
+      console.log(response.text);
+     res.send(response.text)
+    })
+
+    //---------------------------------- save report to database----------------------------//
+    app.post('/save_report/:email',varifyToken,verifyMember,async(req,res)=>{
+    const email= req.params?.email
+    const data = req.body;
+    const information= {...data,email,date: new Date().toLocaleDateString()}
+    // console.log('data::',data);
+    // console.log('information::',information)
+    const result = await Report_Details.insertOne(information)
+    res.send(result)
+    })
+    
+    //--------------------------view report--------------------------------//
+    app.get('/view_report/:email',varifyToken,verifyMember,async(req,res)=>{
+      const email= req.params?.email;
+      const query={email:email};
+      const result= await Report_Details.find(query).toArray();
+      // console.log(result);
+      res.send(result)
+    })
+  //----------------------------Report Details for Single users---------------------------------//
+  app.get('/report_Details/:id',varifyToken,verifyMember,async(req,res)=>{
+    const id= req.params?.id;
+    // console.log('id::',id);
+    const query={_id:new ObjectId(id)};
+    const result= await Report_Details.findOne(query);
+    res.send(result);
+  })
+
 
     //---------------------------------Admin home----------------------------------//
 

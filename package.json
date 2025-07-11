@@ -8,13 +8,14 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-   "dependencies": {
-    "express": "^4.21.2",
+  "dependencies": {
+    "@google/genai": "^1.9.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "mongodb": "^6.15.0",
+    "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "stripe": "^18.1.0",
-    "cookie-parser": "^1.4.7"
+    "mongodb": "^6.15.0",
+    "stripe": "^18.1.0"
   }
 }
