@@ -481,7 +481,7 @@ async function run() {
     })
 
     //----------------------doctor appoinment list----------------------------------//
-    app.get('/doctor/appointment_List/:email', varifyToken, verifyDoctor, async (req, res) => {
+    app.get('/doctor/appointment_List/:email', varifyToken, async (req, res) => {
       const m_email = req.params?.email;
 
       const result = await Payment_Details.aggregate([
