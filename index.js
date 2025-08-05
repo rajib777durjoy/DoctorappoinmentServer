@@ -363,35 +363,37 @@ async function run() {
     // payment history //
     app.post('/paymentHistory/:id', varifyToken, async (req, res) => {
       const id = req.params?.id;
-      const Payment_data = req.body;
-      // const single_user = { appliedEmail: Payment_data?.appliedEmail };
-      // const user_varify = await Payment_Details.findOne(single_user);
-      // if(user_varify) {
-      //   return res.status(401).send({ message:'you already booked the doctor'})
-      // }
-      const query = { _id: new ObjectId(id) };
+      console.log('paymentId',id);
+      const Payment_data = req?.body;
+      // console.log('payment data_:',Payment_data);
+   
+      const query = {_id: new ObjectId(id)};
       const verify_Doctor = await doctors.findOne(query);
-      if (verify_Doctor) {
+      if(verify_Doctor) {
         const Update = {
           $inc: { pasents: 1 }
         }
         const options = { upsert: true };
         const result = await doctors.updateOne(query, Update, options);
+        const storePayment_Details= await Payment_Details.insertOne(Payment_data);
+        console.log('storePayment_Details',storePayment_Details);
         return res.send(result)
       }
       // console.log('payment data', Payment_data)
+
       const result = await Payment_Details.insertOne(Payment_data);
+      // console.log('paymentResult',result);
       if (!result) {
         return res.status(401).send({ message: 'your payment in not store in Database' })
       }
       const Update = {
         $inc: { pasents: 1 }
       }
-      const options = { upsert: true };
+      const options = {upsert:true};
       const result2 = await Payment_Details.updateOne(query, Update, options);
       // console.log(result)
       if (!result2) {
-        return res.status(404).send({ message: 'somethink is wrong !' })
+        return res.status(404).send({ message:'somethink is wrong !' })
       }
       res.send(result);
     })
@@ -481,7 +483,7 @@ async function run() {
     })
 
     //----------------------doctor appoinment list----------------------------------//
-    app.get('/doctor/appointment_List/:email', varifyToken, async (req, res) => {
+    app.get('/doctor/appointment_List/:email',verifyDoctor,varifyToken, async (req, res) => {
       const m_email = req.params?.email;
 
       const result = await Payment_Details.aggregate([
@@ -506,7 +508,7 @@ async function run() {
         }
       ]).toArray()
 
-      // console.log('doctor appoinment"""',result)
+      console.log('doctor appoinment"""',result)
       res.send(result)
     })
 
@@ -521,7 +523,7 @@ async function run() {
     //Get appointment list for member ///
     app.get('/appointmentlist/:email', varifyToken, verifyMember, async (req, res) => {
       const m_email = req.params?.email;
-
+      console.log(m_email)
       const result = await Payment_Details.aggregate([
         {
           $match: { appliedEmail: m_email }
@@ -544,7 +546,7 @@ async function run() {
         }
       ]).toArray()
 
-      // console.log(result)
+      console.log(result)
       res.send(result)
     })
 
