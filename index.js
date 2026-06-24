@@ -1,20 +1,39 @@
-require('dotenv').config();
-const stripe = require('stripe')(process.env.Stripe_API_Key);
-const cookieParser = require("cookie-parser");
-const jwt = require("jsonwebtoken");
-const express = require('express');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+import dotenv from "dotenv";
+dotenv.config();
+import Stripe from "stripe";
+const stripe = new Stripe(process.env.Stripe_API_Key);
+import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
+import express from "express";
+import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
+import cors from "cors";
+import { GoogleGenAI } from "@google/genai";
+import http from "http";
+import { Server } from "socket.io";
+import { upload } from "./Multer/multer.js";
+import { ImageStore } from "./ImageHost/Imagekit.io.js";
+
 const app = express();
 const port = process.env.PORT || 4500;
-const cors = require('cors');
-const { GoogleGenAI } = require("@google/genai");
-
 
 app.use(cors({
-  origin: ['http://localhost:5173','https://doctorproject-a4e4f.web.app'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-}))
+  origin: [
+    'http://localhost:5173',
+    'https://doctorproject-a4e4f.web.app'
+  ],
+  credentials: true
+}));
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: [
+      'http://localhost:5173',
+      'https://doctorproject-a4e4f.web.app'
+    ],
+    credentials: true
+  }
+});
 
 app.use(express.json())
 app.use(cookieParser());
@@ -59,7 +78,8 @@ async function run() {
     const Payment_Details = database.collection('payment_details')
     const doctor_apply_list = database.collection('doctor_apply_request');
     const news_collection = database.collection('news_collection');
-    const Report_Details= database.collection('Report_collection');
+    const Report_Details = database.collection('Report_collection');
+    const comment_collection = database.collection('comment_collection');
     // --------------------------------------------------------------------------//
     /// verifyAdmin ///
     const verifyAdmin = async (req, res, next) => {
@@ -138,16 +158,34 @@ async function run() {
     //----------------------------------------------------------------------------//
 
     // add user ///
-    app.post('/addUser/:email', async (req, res) => {
+    app.post('/addUser/:email', upload.single('image'), async (req, res) => {
       const data = req.body;
       const email = req.params?.email;
+      const Imgfile = req.file;
+      // console.log('imagefile',Imgfile);
+      // console.log('data::',data);
       const query = { email: email }
       const check = await userCollection.findOne(query);
       if (check) {
         return res.send({ message: 'you already user' });
       }
-      const result = await userCollection.insertOne(data);
-      res.send(result)
+      if (!Imgfile) {
+        return res.status(505).send({ messge: 'Image not found!' })
+      }
+      let ImageUrl = data.image;
+      if (Imgfile?.originalname) {
+        ImageUrl = await ImageStore(Imgfile);
+      }
+      console.log('getImageUrl', ImageUrl);
+      const UserData = { ...data, profle: ImageUrl };
+      // console.log('userData',UserData)
+      const result = await userCollection.insertOne(UserData);
+      console.log('result::', result)
+      res.status(201).send({
+        insertedId: result.insertedId,
+        profile:ImageUrl,
+        name:data?.name
+      });
     })
 
     //----------------- Update profile --------------------------------//
@@ -196,12 +234,11 @@ async function run() {
     //-----------------------verify user checking--------------------------//
     app.get('/verify_user/:email', async (req, res) => {
       const email = req.params?.email;
-      // console.log("user email",email);
       const query = { email: email };
       const user_Type = await userCollection.findOne(query);
       // console.log("user_Type",user_Type)
-      const role = user_Type?.role == 'admin' || user_Type?.role == 'doctor' ? user_Type.role : 'member';
-      // console.log('user role 196::',role)
+      const role = user_Type?.role;
+      console.log('user role 218::', role)
       res.send({ role })
     })
     //add doctor related api
@@ -246,12 +283,12 @@ async function run() {
 
 
     //--------------------show all post---------------------------------------------//
-    app.get('/post_preview/:email', async (req, res) => {
-      const email = req.params?.email;
-      const query = { email: email };
-      const result = await news_collection.find().toArray();
+    app.get('/post_preview', async (req, res) => {
+      const result = await news_collection.find().toArray()
+      // console.log('reuslsdfsdfds', result)
       res.send(result);
     })
+
     ///doctors details related api 
     app.get('/doctor/details/:id', async (req, res) => {
       const Id = req?.params?.id;
@@ -267,9 +304,7 @@ async function run() {
     /// applid list related api ///
     app.get('/applidlist', varifyToken, verifyAdmin, async (req, res) => {
       const result = await doctor_apply_list.find().toArray();
-
       res.send(result)
-
     })
 
     // applid update //
@@ -363,20 +398,20 @@ async function run() {
     // payment history //
     app.post('/paymentHistory/:id', varifyToken, async (req, res) => {
       const id = req.params?.id;
-      console.log('paymentId',id);
+      console.log('paymentId', id);
       const Payment_data = req?.body;
       // console.log('payment data_:',Payment_data);
-   
-      const query = {_id: new ObjectId(id)};
+
+      const query = { _id: new ObjectId(id) };
       const verify_Doctor = await doctors.findOne(query);
-      if(verify_Doctor) {
+      if (verify_Doctor) {
         const Update = {
           $inc: { pasents: 1 }
         }
         const options = { upsert: true };
         const result = await doctors.updateOne(query, Update, options);
-        const storePayment_Details= await Payment_Details.insertOne(Payment_data);
-        console.log('storePayment_Details',storePayment_Details);
+        const storePayment_Details = await Payment_Details.insertOne(Payment_data);
+        console.log('storePayment_Details', storePayment_Details);
         return res.send(result)
       }
       // console.log('payment data', Payment_data)
@@ -389,11 +424,11 @@ async function run() {
       const Update = {
         $inc: { pasents: 1 }
       }
-      const options = {upsert:true};
+      const options = { upsert: true };
       const result2 = await Payment_Details.updateOne(query, Update, options);
       // console.log(result)
       if (!result2) {
-        return res.status(404).send({ message:'somethink is wrong !' })
+        return res.status(404).send({ message: 'somethink is wrong !' })
       }
       res.send(result);
     })
@@ -483,7 +518,7 @@ async function run() {
     })
 
     //----------------------doctor appoinment list----------------------------------//
-    app.get('/doctor/appointment_List/:email',verifyDoctor,varifyToken, async (req, res) => {
+    app.get('/doctor/appointment_List/:email', verifyDoctor, varifyToken, async (req, res) => {
       const m_email = req.params?.email;
 
       const result = await Payment_Details.aggregate([
@@ -508,7 +543,7 @@ async function run() {
         }
       ]).toArray()
 
-      console.log('doctor appoinment"""',result)
+      console.log('doctor appoinment"""', result)
       res.send(result)
     })
 
@@ -580,7 +615,7 @@ async function run() {
     })
 
     //------------------------------AI-Powered Health Checkup-----------------------------//
-    app.post('/health/summary/',varifyToken,verifyMember,async (req, res) => {
+    app.post('/health/summary/', varifyToken, verifyMember, async (req, res) => {
       const language = req.query?.language;
       const healthInfo = req.body;
       console.log('language::', language, "healthInfo::", healthInfo)
@@ -622,36 +657,36 @@ Limit your reply to about 200 words.
         },
       });
       console.log(response.text);
-     res.send(response.text)
+      res.send(response.text)
     })
 
     //---------------------------------- save report to database----------------------------//
-    app.post('/save_report/:email',varifyToken,verifyMember,async(req,res)=>{
-    const email= req.params?.email
-    const data = req.body;
-    const information= {...data,email,date: new Date().toLocaleDateString()}
-    // console.log('data::',data);
-    // console.log('information::',information)
-    const result = await Report_Details.insertOne(information)
-    res.send(result)
+    app.post('/save_report/:email', varifyToken, verifyMember, async (req, res) => {
+      const email = req.params?.email
+      const data = req.body;
+      const information = { ...data, email, date: new Date().toLocaleDateString() }
+      // console.log('data::',data);
+      // console.log('information::',information)
+      const result = await Report_Details.insertOne(information)
+      res.send(result)
     })
-    
+
     //--------------------------view report--------------------------------//
-    app.get('/view_report/:email',varifyToken,verifyMember,async(req,res)=>{
-      const email= req.params?.email;
-      const query={email:email};
-      const result= await Report_Details.find(query).toArray();
+    app.get('/view_report/:email', varifyToken, verifyMember, async (req, res) => {
+      const email = req.params?.email;
+      const query = { email: email };
+      const result = await Report_Details.find(query).toArray();
       // console.log(result);
       res.send(result)
     })
-  //----------------------------Report Details for Single users---------------------------------//
-  app.get('/report_Details/:id',varifyToken,verifyMember,async(req,res)=>{
-    const id= req.params?.id;
-    // console.log('id::',id);
-    const query={_id:new ObjectId(id)};
-    const result= await Report_Details.findOne(query);
-    res.send(result);
-  })
+    //----------------------------Report Details for Single users---------------------------------//
+    app.get('/report_Details/:id', varifyToken, verifyMember, async (req, res) => {
+      const id = req.params?.id;
+      // console.log('id::',id);
+      const query = { _id: new ObjectId(id) };
+      const result = await Report_Details.findOne(query);
+      res.send(result);
+    })
 
 
     //---------------------------------Admin home----------------------------------//
@@ -742,18 +777,166 @@ Limit your reply to about 200 words.
         //  console.log('user_profile problem')
         return res.send({ message: 'user_profile problem' })
       }
-      const dataInfo = { ...data, email, name, user_profile, role }
-
+      const dataInfo = { ...data, email, name, user_profile, role };
       const result = await news_collection.insertOne(dataInfo);
-      // console.log("result", result)
-      res.send(result)
 
-      //  const dataInfo ={...data,email}
-      //  const result = await news_collection.insertOne(dataInfo);
-      //  console.log("result",result)
-      //  res.send(result)
+      res.send(result);
     })
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+
+    //------------------Blog liked_Functionality-----------------------------//
+    app.post('/blog_liked/:id/:email', varifyToken, async (req, res) => {
+      const post_id = req.params?.id;
+      const user_email = req.params?.email;
+      const check = await news_collection.findOne({ _id: new ObjectId(post_id) })
+
+      const filters = check?.likeId?.filter((item) => {
+
+        return item.post_id === post_id && item?.user_email == user_email
+      })
+
+      if (filters?.length > 0) {
+        const query = { _id: new ObjectId(post_id), like: { $gte: 1 } }
+        const update = {
+          $pull: { likeId: { post_id, user_email } },
+          $inc: { like: -1 }
+        };
+        const likeDecriment = await news_collection.updateOne(query, update);
+
+        return res.send({ message: 'unlike' })
+      }
+      const update = {
+        $push: { likeId: { post_id, user_email } },
+        $inc: { like: 1 }
+      }
+      const optional = { upsert: true }
+      const storeLike = await news_collection.updateOne({ _id: new ObjectId(post_id) }, update, optional)
+      res.send({ message: 'liked' })
+    })
+
+    //---------Post Comment functionality----------------------//
+    app.get('/allCommentlist/:id', async (req, res) => {
+      const { id } = req.params;
+      const join_to_userList = await comment_collection.aggregate([
+        {
+          $match: { post_id: id }
+        },
+        {
+          $sort: { createdAt: -1 }
+        },
+        {
+          $lookup: {
+            from: "userlist",
+            localField: "user_email",
+            foreignField: "email",
+            as: "userInfo"
+          }
+        },
+        {
+          $unwind: "$userInfo"
+        }
+      ]).toArray()
+      // console.log('join to userlist::', join_to_userList)
+      res.send(join_to_userList)
+    })
+
+
+    app.post('/post/comment/:id/:email', varifyToken, async (req, res) => {
+      const { id, email } = req.params;
+      const { comment } = req.body;
+      console.log(id, email, comment)
+      const Data = {
+        post_id: id,
+        user_email: email,
+        comment,
+        date: new Date()
+      };
+      const post_Comment = await comment_collection.insertOne(Data);
+      res.send(post_Comment)
+      // console.log('post_comment::', post_Comment);
+    })
+
+    app.patch('/comment/edit/:id', async (req, res) => {
+      const { id } = req.params;
+      const { comment } = req.body;
+      console.log('comment body::', comment);
+      const query = { _id: new ObjectId(id) };
+      const update = {
+        $set: { comment }
+      }
+      const optional = { upsert: true }
+      const result = await comment_collection.updateOne(query, update, optional);
+      console.log('comment::', result)
+      res.send(result);
+    })
+
+    // comment delete related api //
+    app.delete('/comment/delete/:id', async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const delete_Comment = await comment_collection.deleteOne(query);
+      // console.log('delete_comment::',delete_Comment)
+      res.send(delete_Comment);
+
+    })
+    //-----------------------------Member Message page related function---------------------------//
+    app.get('/appointments/doctor/list/:email', async (req, res) => {
+      const { email } = req.params;
+      console.log('memberEmail::', email)
+      const findTheDoctor = await Payment_Details.aggregate([
+        { $match: { appliedEmail: email } },
+        {
+          $addFields: { doctorId: { $toObjectId: '$doctor_id' } }
+        },
+        {
+          $lookup: {
+            from: 'doctorCollection',
+            localField: 'doctorId',
+            foreignField: '_id',
+            as: 'doctorInfo'
+          }
+        },
+        {
+          $unwind: '$doctorInfo'
+        },
+        {
+          $project: {
+            _id: 0,
+            doctorInfo: 1,
+          }
+        }
+      ]).toArray()
+      console.log('findthedoctor::', findTheDoctor)
+      res.send(findTheDoctor)
+    })
+    /// real time Chating related Functionality///
+    let user = {}
+    io.on('connection', (socket) => {
+      console.log(`🔌 User connected: ${socket.id}`);
+
+      // Listen for events from client
+      socket.on('registerEmail', ({ email }) => {
+        user[email] = socket.id;
+      })
+      socket.on('sendMessage', ({ email, message }) => {
+        user[email] = socket.id;
+        console.log('userCheck::', user[email] = socket.id);
+        console.log('all user_check::', user)
+        socket.emit('message', { message });
+      });
+
+      socket.on('disconnect', () => {
+        console.log(`❌ User disconnected: ${socket.id}`);
+        for (let email in user) {
+          if (user[email] === socket.id) {
+            console.log(`Removed user: ${email}`);
+            delete user[email];
+            break;
+          }
+        }
+      });
+    });
+
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -764,7 +947,8 @@ run().catch(console.dir);
 app.get('/', (req, res) => {
   res.send('server is running')
 })
-app.listen(port, () => {
-  console.log('server is running', port)
-})
+
+server.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
 
