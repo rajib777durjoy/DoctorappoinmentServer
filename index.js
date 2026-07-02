@@ -12,13 +12,14 @@ import http from "http";
 import { Server } from "socket.io";
 import { upload } from "./Multer/multer.js";
 import { ImageStore } from "./ImageHost/Imagekit.io.js";
+import { LLMRoute } from "./LLMRoute/LLMRoute.js";
 
 const app = express();
 const port = process.env.PORT || 4500;
 
 app.use(cors({
   origin: [
-    'http://localhost:5173',
+    'http://localhost:5174',
     'https://doctorproject-a4e4f.web.app'
   ],
   credentials: true
@@ -35,8 +36,9 @@ const io = new Server(server, {
   }
 });
 
-app.use(express.json())
+app.use(express.json());
 app.use(cookieParser());
+app.use('/api/AIModel',LLMRoute);
 
 const varifyToken = (req, res, next) => {
   const Token = req.cookies?.token;
@@ -75,7 +77,7 @@ async function run() {
     const userCollection = database.collection('userlist');
     const CategoryColletion = database.collection('categoris');
     const degreeColletion = database.collection('degreeCollection');
-    const Payment_Details = database.collection('payment_details')
+    const Booking_Details = database.collection('doctor_booking_list')
     const doctor_apply_list = database.collection('doctor_apply_request');
     const news_collection = database.collection('news_collection');
     const Report_Details = database.collection('Report_collection');
@@ -91,16 +93,17 @@ async function run() {
       }
       next()
     }
+
     //-------- Both verify user like doctor and admin-----------//
     const verifyboth = async (req, res, next) => {
       const email = req?.decoded?.email;
-      // console.log('doctor token email::',email)
+      console.log('doctor token email::', email)
       const query = { email: email };
       const both_user = await userCollection.findOne(query);
-      if (both_user?.role !== 'doctor' || both_user?.role !== 'admin') {
-        return res.status(403).send({ message: 'forbidden access' });
+      if (both_user?.role === 'doctor' || both_user?.role === 'admin') {
+        return next()
       }
-      next()
+      return res.status(403).send({ message: 'forbidden access' });
     }
 
     /// doctor verify ///
@@ -121,10 +124,10 @@ async function run() {
       // console.log('member token req::',req?.decoded?.email)
       const query = { email: email };
       const Member = await userCollection.findOne(query);
-      if (Member?.role !== 'member') {
-        return res.status(403).send({ message: 'forbidden access' });
+      if (Member?.role === 'member') {
+        return next();
       }
-      next()
+      return res.status(403).send({ message: 'forbidden access' });
     }
     //---------------------------------------------------------------------//
 
@@ -147,6 +150,7 @@ async function run() {
         })
         .send({ token })
     })
+
     app.post('/logout', (req, res) => {
       res.clearCookie('token', {
         httpOnly: true,
@@ -157,7 +161,7 @@ async function run() {
     })
     //----------------------------------------------------------------------------//
 
-    // add user ///
+    //--------------------- Add user -------------------///
     app.post('/addUser/:email', upload.single('image'), async (req, res) => {
       const data = req.body;
       const email = req.params?.email;
@@ -183,8 +187,8 @@ async function run() {
       console.log('result::', result)
       res.status(201).send({
         insertedId: result.insertedId,
-        profile:ImageUrl,
-        name:data?.name
+        profile: ImageUrl,
+        name: data?.name
       });
     })
 
@@ -232,16 +236,16 @@ async function run() {
     })
 
     //-----------------------verify user checking--------------------------//
-    app.get('/verify_user/:email', async (req, res) => {
+    app.get('/verify_user/:email',varifyToken, async (req, res) => {
       const email = req.params?.email;
       const query = { email: email };
       const user_Type = await userCollection.findOne(query);
-      // console.log("user_Type",user_Type)
+      console.log("user_Type",user_Type)
       const role = user_Type?.role;
-      console.log('user role 218::', role)
       res.send({ role })
     })
-    //add doctor related api
+
+    //-----------------Add doctor related API -------------------//
     app.post('/doctor/addDoctor', varifyToken, async (req, res) => {
       const data = req.body;
       // console.log('add doctor data', data)
@@ -255,7 +259,7 @@ async function run() {
       res.send(result)
     })
 
-    //---------------------------category searching related api ----------------------------//
+    //---------------------------Category searching related api ----------------------------//
     app.get('/categroy/query', async (req, res) => {
       const category = req.query?.name;
       // console.log("category line:: 174",category)
@@ -265,31 +269,32 @@ async function run() {
       res.send(result);
     })
 
-
-    //---------------------some doctors get related api-------------------------------------//
-
+    //--------------------- Some doctors get related API -----------------------//
     app.get('/doctorlist', async (req, res) => {
       const query = { role: 'doctor' }
       const result = await doctors.find(query).limit(4).toArray();
+      console.log('4 Doctor list ', result)
       res.send(result)
     })
 
-    /// all doctor related api //
+    ///------------ All doctor related API --------------------- //
     app.get('/doctor/alldoctor', async (req, res) => {
-      const query = { role: 'doctor' }
+      const query = { role: 'doctor' };
+
       const result = await doctors.find(query).toArray();
+      console.log('All Doctor data:', result)
       res.send(result)
     })
 
 
-    //--------------------show all post---------------------------------------------//
+    //--------------------Show all post ------------------------//
     app.get('/post_preview', async (req, res) => {
       const result = await news_collection.find().toArray()
       // console.log('reuslsdfsdfds', result)
       res.send(result);
     })
 
-    ///doctors details related api 
+    ///--------------- doctors details related API --------------//
     app.get('/doctor/details/:id', async (req, res) => {
       const Id = req?.params?.id;
       const query = { _id: new ObjectId(Id) }
@@ -300,14 +305,13 @@ async function run() {
     // ---------------------------------------------------------------//
 
     /// admin dashboard related api ///
-
-    /// applid list related api ///
+    ///-------------------- Applid list related API ---------------- ///
     app.get('/applidlist', varifyToken, verifyAdmin, async (req, res) => {
       const result = await doctor_apply_list.find().toArray();
       res.send(result)
     })
 
-    // applid update //
+    //--------------------- Apply status update ------------------- //
     app.patch('/status/Update/:applid_id', varifyToken, verifyAdmin, async (req, res) => {
       const data = req.body;
       const id = req.params?.applid_id;
@@ -347,16 +351,17 @@ async function run() {
     })
 
 
-    /// add category from admin ///
+    ///-------------------- add category from admin ------------------ ///
     app.post('/addCategory', varifyToken, verifyboth, async (req, res) => {
       const categoryValue = req.body;
-
+      // console.log('add category click ...')
       const result = await CategoryColletion.insertOne(categoryValue);
-
+      // console.log('result', result)
       res.send(result)
 
     })
-    /// add degree form admin //
+
+    /// ---------- add degree form admin ------------------- //
     app.post('/addDegree', async (req, res) => {
       const degreelist = req.body;
 
@@ -379,59 +384,59 @@ async function run() {
 
     ///--------------------------------- Payment------------------------- ///
 
-    app.post('/create-checkout-session', varifyToken, async (req, res) => {
-      const { price } = req.body;
-      const amount = parseInt(price * 100);
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amount,
-        currency: 'usd',
-        payment_method_types: [
-          'card'
-        ]
-      })
-      res.send({
-        clientSecret: paymentIntent.client_secret
-      })
+    // app.post('/create-checkout-session', varifyToken, async (req, res) => {
+    //   const { price } = req.body;
+    //   const amount = parseInt(price * 100);
+    //   const paymentIntent = await stripe.paymentIntents.create({
+    //     amount: amount,
+    //     currency: 'usd',
+    //     payment_method_types: [
+    //       'card'
+    //     ]
+    //   })
+    //   res.send({
+    //     clientSecret: paymentIntent.client_secret
+    //   })
 
-    });
+    // });
 
-    // payment history //
-    app.post('/paymentHistory/:id', varifyToken, async (req, res) => {
-      const id = req.params?.id;
-      console.log('paymentId', id);
-      const Payment_data = req?.body;
-      // console.log('payment data_:',Payment_data);
+    //-------------------- payment history ----------------------- //
+    // app.post('/paymentHistory/:id', varifyToken, async (req, res) => {
+    //   const id = req.params?.id;
+    //   console.log('paymentId', id);
+    //   const Payment_data = req?.body;
+    //   // console.log('payment data_:',Payment_data);
 
-      const query = { _id: new ObjectId(id) };
-      const verify_Doctor = await doctors.findOne(query);
-      if (verify_Doctor) {
-        const Update = {
-          $inc: { pasents: 1 }
-        }
-        const options = { upsert: true };
-        const result = await doctors.updateOne(query, Update, options);
-        const storePayment_Details = await Payment_Details.insertOne(Payment_data);
-        console.log('storePayment_Details', storePayment_Details);
-        return res.send(result)
-      }
-      // console.log('payment data', Payment_data)
+    //   const query = { _id: new ObjectId(id) };
+    //   const verify_Doctor = await doctors.findOne(query);
+    //   if (verify_Doctor) {
+    //     const Update = {
+    //       $inc: { pasents: 1 }
+    //     }
+    //     const options = { upsert: true };
+    //     const result = await doctors.updateOne(query, Update, options);
+    //     const storeBooking_Details = await Booking_Details.insertOne(Payment_data);
+    //     console.log('storeBooking_Details', storeBooking_Details);
+    //     return res.send(result)
+    //   }
+    //   // console.log('payment data', Payment_data)
 
-      const result = await Payment_Details.insertOne(Payment_data);
-      // console.log('paymentResult',result);
-      if (!result) {
-        return res.status(401).send({ message: 'your payment in not store in Database' })
-      }
-      const Update = {
-        $inc: { pasents: 1 }
-      }
-      const options = { upsert: true };
-      const result2 = await Payment_Details.updateOne(query, Update, options);
-      // console.log(result)
-      if (!result2) {
-        return res.status(404).send({ message: 'somethink is wrong !' })
-      }
-      res.send(result);
-    })
+    //   const result = await Booking_Details.insertOne(Payment_data);
+    //   // console.log('paymentResult',result);
+    //   if (!result) {
+    //     return res.status(401).send({ message: 'your payment in not store in Database' })
+    //   }
+    //   const Update = {
+    //     $inc: { pasents: 1 }
+    //   }
+    //   const options = { upsert: true };
+    //   const result2 = await Booking_Details.updateOne(query, Update, options);
+    //   // console.log(result)
+    //   if (!result2) {
+    //     return res.status(404).send({ message: 'somethink is wrong !' })
+    //   }
+    //   res.send(result);
+    // })
 
     ///-------------------------------- Doctor------------------------------------ ///
 
@@ -447,34 +452,67 @@ async function run() {
     //------------------Get pasent list by doctor email----------------------- //
     app.get('/listfopasent/:email', varifyToken, verifyDoctor, async (req, res) => {
       const email = req.params?.email;
-      const result = await doctors.aggregate([
+      const result = await Booking_Details.aggregate([
+        // doctor_id (string) -> ObjectId
         {
-          $match: { email: email }
+          $addFields: {
+            doctorObjectId: {
+              $toObjectId: "$doctor_id",
+            },
+          },
         },
+
+        // Join Doctor
         {
           $lookup: {
-            from: 'payment_details',
-            let: { docId: '$_id' },
-            pipeline: [
-              {
-                $addFields: {
-                  convertedDoctorId: { $toObjectId: "$doctor_id" }
-                }
-              },
-              {
-                $match: {
-                  $expr: { $eq: ["$$docId", "$convertedDoctorId"] }
-                }
-              }
-            ],
-            as: "pasentList"
-          }
+            from: "doctorCollection",
+            localField: "doctorObjectId",
+            foreignField: "_id",
+            as: "doctor",
+          },
         },
 
         {
-          $unwind: "$pasentList"
-        }
-      ]).toArray()
+          $unwind: "$doctor",
+        },
+
+        // Logged-in doctor
+        {
+          $match: {
+            "doctor.email": email,
+          },
+        },
+
+        // Join Patient
+        {
+          $lookup: {
+            from: "userlist", 
+            localField: "patientEmail",
+            foreignField: "email",
+            as: "patient",
+          },
+        },
+
+        {
+          $unwind: "$patient",
+        },
+
+       
+        {
+          $project: {
+            _id: 1,
+            bookingDate: 1,
+            status: 1,
+            doctorName: "$doctor.name",
+            doctorFee: 1,
+
+            patientName: "$patient.name",
+            patientEmail: "$patient.email",
+            patientImage: "$patient.image",
+            patientPhone: "$patient.phone",
+          },
+        },
+      ]).toArray();
       // console.log('pasentlist:', result)
       res.send(result)
     })
@@ -487,7 +525,7 @@ async function run() {
         },
         {
           $lookup: {
-            from: 'payment_details',
+            from: 'Booking_Details',
             let: { docId: '$_id' },
             pipeline: [
               {
@@ -518,10 +556,10 @@ async function run() {
     })
 
     //----------------------doctor appoinment list----------------------------------//
-    app.get('/doctor/appointment_List/:email', verifyDoctor, varifyToken, async (req, res) => {
+    app.get('/doctor/appointment_List/:email', varifyToken, verifyDoctor, async (req, res) => {
       const m_email = req.params?.email;
 
-      const result = await Payment_Details.aggregate([
+      const result = await Booking_Details.aggregate([
         {
           $match: { appliedEmail: m_email }
         },
@@ -543,7 +581,7 @@ async function run() {
         }
       ]).toArray()
 
-      console.log('doctor appoinment"""', result)
+      // console.log('doctor appoinment"""', result)
       res.send(result)
     })
 
@@ -552,14 +590,40 @@ async function run() {
     app.get('/mybookingInfo/:email', varifyToken, verifyMember, async (req, res) => {
       const email = req.params?.email;
       const query = { appliedEmail: email };
-      const result = await Payment_Details.find(query).toArray()
+      const result = await Booking_Details.find(query).toArray();
       res.send(result);
     })
+
+    app.post('/doctor_book/:email', varifyToken, verifyMember, async (req, res) => {
+      const email = req.params?.email;
+      const data = req.body;
+      const query = await userCollection.findOne({ email: email });
+      // console.log('user query::', query)
+      if (!query?._id) {
+        return res.status(401).send('user not found !')
+      }
+      const DoctorBook = await Booking_Details.insertOne({
+        ...data, patientEmail: email,
+        status: "pending",
+        bookingDate: new Date(),
+      });
+      if (!DoctorBook.insertedId) {
+        return res.status(500).send({ message: 'Doctor Booking Failed !!' })
+      }
+      // console.log('doctor book ', DoctorBook)
+      return res.status(201).send({
+        success: true,
+        message: "Doctor booked successfully.",
+        insertedId: DoctorBook.insertedId,
+      });
+
+    })
+
     //Get appointment list for member ///
     app.get('/appointmentlist/:email', varifyToken, verifyMember, async (req, res) => {
       const m_email = req.params?.email;
-      console.log(m_email)
-      const result = await Payment_Details.aggregate([
+      // console.log(m_email)
+      const result = await Booking_Details.aggregate([
         {
           $match: { appliedEmail: m_email }
         },
@@ -581,112 +645,112 @@ async function run() {
         }
       ]).toArray()
 
-      console.log(result)
+      // console.log(result)
       res.send(result)
     })
 
-    /// member-payment-list related api ---
-    app.get('/member_payment_list/:email', varifyToken, verifyMember, async (req, res) => {
-      const email = req?.params?.email;
-      const result = await Payment_Details.aggregate([
-        {
-          $match: { appliedEmail: email }
-        },
-        {
-          $addFields: {
-            doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id convert to  ObjectId 
-          }
-        },
-        {
-          $lookup: {
-            from: 'doctorCollection', // doctor collection name
-            localField: 'doctorObjectId',
-            foreignField: "_id",  // doctor's _id field
-            as: 'Doctor_info'
-          }
-        },
-        {
-          $unwind: "$Doctor_info"
-        }
-      ]).toArray()
+    /// ------------------ member-payment-list related API ---------- ///
+    // app.get('/member_payment_list/:email', varifyToken, verifyMember, async (req, res) => {
+    //   const email = req?.params?.email;
+    //   const result = await Booking_Details.aggregate([
+    //     {
+    //       $match: { appliedEmail: email }
+    //     },
+    //     {
+    //       $addFields: {
+    //         doctorObjectId: { $toObjectId: "$doctor_id" } // doctor_id convert to  ObjectId 
+    //       }
+    //     },
+    //     {
+    //       $lookup: {
+    //         from: 'doctorCollection', // doctor collection name
+    //         localField: 'doctorObjectId',
+    //         foreignField: "_id",  // doctor's _id field
+    //         as: 'Doctor_info'
+    //       }
+    //     },
+    //     {
+    //       $unwind: "$Doctor_info"
+    //     }
+    //   ]).toArray()
 
-      // console.log('payment list', result)
-      res.send(result)
-    })
+    //   // console.log('payment list', result)
+    //   res.send(result)
+    // })
 
     //------------------------------AI-Powered Health Checkup-----------------------------//
-    app.post('/health/summary/', varifyToken, verifyMember, async (req, res) => {
-      const language = req.query?.language;
-      const healthInfo = req.body;
-      console.log('language::', language, "healthInfo::", healthInfo)
-      const AI = new GoogleGenAI({
-        apiKey: process.env.Gemini_API_Key
-      })
-      const response = await AI.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `
-Patient's Health Data:
-- Height: ${healthInfo.height} cm
-- Weight: ${healthInfo.weight} kg
-- Blood Pressure: ${healthInfo.bloodPressure}
-- Pulse: ${healthInfo.pulse}
-- Temperature: ${healthInfo.temperature}
-- Sugar: ${healthInfo.sugar}
-- Oxygen: ${healthInfo.oxygen}
-- Known Condition: ${healthInfo.health_Conditions || "None"}
+    //     app.post('/health/summary/', varifyToken, verifyMember, async (req, res) => {
+    //       const language = req.query?.language;
+    //       const healthInfo = req.body;
+    //       console.log('language::', language, "healthInfo::", healthInfo)
+    //       const AI = new GoogleGenAI({
+    //         apiKey: process.env.Gemini_API_Key
+    //       })
+    //       const response = await AI.models.generateContent({
+    //         model: "gemini-2.5-flash",
+    //         contents: [
+    //           {
+    //             role: "user",
+    //             parts: [
+    //               {
+    //                 text: `
+    // Patient's Health Data:
+    // - Height: ${healthInfo.height} cm
+    // - Weight: ${healthInfo.weight} kg
+    // - Blood Pressure: ${healthInfo.bloodPressure}
+    // - Pulse: ${healthInfo.pulse}
+    // - Temperature: ${healthInfo.temperature}
+    // - Sugar: ${healthInfo.sugar}
+    // - Oxygen: ${healthInfo.oxygen}
+    // - Known Condition: ${healthInfo.health_Conditions || "None"}
 
-Please analyze this and act as a virtual doctor.
-Return plain text only, no Markdown formatting.
-Keep your answer around 200 words.
-Analyze patient condition, predict future risks, and give 3/5 practical health tips.Text language is${language || 'English'}`,
-              },
-            ],
-          },
-        ],
-        config: {
-          systemInstruction: `If user type like that question is Who are you or what's your name or who is your creator then your answer (You are HealthBot, a virtual health assistant created by Durjoy Chando.) this type , else is " " focus next 
-You behave like a real doctor — always helpful, informative, and friendly.
-Do not use Markdown. Keep responses clear, concise, and calm like a caring doctor. And You will check all the user's health inputs and tell the patient how their overall health condition is — such as whether it is Normal, Needs Attention, or Dangerous 
-Limit your reply to about 200 words.
-        `.trim()
-        },
-      });
-      console.log(response.text);
-      res.send(response.text)
-    })
+    // Please analyze this and act as a virtual doctor.
+    // Return plain text only, no Markdown formatting.
+    // Keep your answer around 200 words.
+    // Analyze patient condition, predict future risks, and give 3/5 practical health tips.Text language is${language || 'English'}`,
+    //               },
+    //             ],
+    //           },
+    //         ],
+    //         config: {
+    //           systemInstruction: `If user type like that question is Who are you or what's your name or who is your creator then your answer (You are HealthBot, a virtual health assistant created by Durjoy Chando.) this type , else is " " focus next 
+    // You behave like a real doctor — always helpful, informative, and friendly.
+    // Do not use Markdown. Keep responses clear, concise, and calm like a caring doctor. And You will check all the user's health inputs and tell the patient how their overall health condition is — such as whether it is Normal, Needs Attention, or Dangerous 
+    // Limit your reply to about 200 words.
+    //         `.trim()
+    //         },
+    //       });
+    //       console.log(response.text);
+    //       res.send(response.text)
+    //     })
 
     //---------------------------------- save report to database----------------------------//
-    app.post('/save_report/:email', varifyToken, verifyMember, async (req, res) => {
-      const email = req.params?.email
-      const data = req.body;
-      const information = { ...data, email, date: new Date().toLocaleDateString() }
-      // console.log('data::',data);
-      // console.log('information::',information)
-      const result = await Report_Details.insertOne(information)
-      res.send(result)
-    })
+    // app.post('/save_report/:email', varifyToken, verifyMember, async (req, res) => {
+    //   const email = req.params?.email
+    //   const data = req.body;
+    //   const information = { ...data, email, date: new Date().toLocaleDateString() }
+    //   // console.log('data::',data);
+    //   // console.log('information::',information)
+    //   const result = await Report_Details.insertOne(information)
+    //   res.send(result)
+    // })
 
     //--------------------------view report--------------------------------//
-    app.get('/view_report/:email', varifyToken, verifyMember, async (req, res) => {
-      const email = req.params?.email;
-      const query = { email: email };
-      const result = await Report_Details.find(query).toArray();
-      // console.log(result);
-      res.send(result)
-    })
+    // app.get('/view_report/:email', varifyToken, verifyMember, async (req, res) => {
+    //   const email = req.params?.email;
+    //   const query = { email: email };
+    //   const result = await Report_Details.find(query).toArray();
+    //   // console.log(result);
+    //   res.send(result)
+    // })
     //----------------------------Report Details for Single users---------------------------------//
-    app.get('/report_Details/:id', varifyToken, verifyMember, async (req, res) => {
-      const id = req.params?.id;
-      // console.log('id::',id);
-      const query = { _id: new ObjectId(id) };
-      const result = await Report_Details.findOne(query);
-      res.send(result);
-    })
+    // app.get('/report_Details/:id', varifyToken, verifyMember, async (req, res) => {
+    //   const id = req.params?.id;
+    //   // console.log('id::',id);
+    //   const query = { _id: new ObjectId(id) };
+    //   const result = await Report_Details.findOne(query);
+    //   res.send(result);
+    // })
 
 
     //---------------------------------Admin home----------------------------------//
@@ -695,7 +759,7 @@ Limit your reply to about 200 words.
     app.get('/totalPayment/totalDoctor/:email', varifyToken, verifyAdmin, async (req, res) => {
       const Email = req.params?.email;
       // console.log('Email address', Email)
-      const totalPay = await Payment_Details.aggregate([
+      const totalPay = await Booking_Details.aggregate([
         {
           $group: {
             _id: null,
@@ -721,7 +785,7 @@ Limit your reply to about 200 words.
     app.get('/per_doctor/balancelis/:email', varifyToken, verifyAdmin, async (req, res) => {
       const Email = req.params?.email;
       const query = { email: { $ne: Email } };
-      const result = await Payment_Details.find(query).limit(10).toArray();
+      const result = await Booking_Details.find(query).limit(10).toArray();
       // console.log('doctor payment per:::',result)
       res.send(result);
     })
@@ -744,14 +808,15 @@ Limit your reply to about 200 words.
       }
       const id = Doctor_check?._id.toString();
       const find_id = { doctor_id: id };
-      const find_doctor = await Payment_Details.find(find_id).toArray();
+      const find_doctor = await Booking_Details.find(find_id).toArray();
       // console.log("find_doctor::", find_doctor)
       res.send(find_doctor)
     })
+
     //-----------------------------single Doctor amount---------------------------//
     app.get('/single_doctor_amount/:email', varifyToken, verifyDoctor, async (req, res) => {
       const email = req.params?.email;
-      console.log(email)
+      // console.log(email)
       const query = { email: email };
       const result = await doctors.findOne(query);
       const fee = parseInt(result?.fee);
@@ -843,7 +908,7 @@ Limit your reply to about 200 words.
     app.post('/post/comment/:id/:email', varifyToken, async (req, res) => {
       const { id, email } = req.params;
       const { comment } = req.body;
-      console.log(id, email, comment)
+      // console.log(id, email, comment)
       const Data = {
         post_id: id,
         user_email: email,
@@ -858,14 +923,14 @@ Limit your reply to about 200 words.
     app.patch('/comment/edit/:id', async (req, res) => {
       const { id } = req.params;
       const { comment } = req.body;
-      console.log('comment body::', comment);
+      // console.log('comment body::', comment);
       const query = { _id: new ObjectId(id) };
       const update = {
         $set: { comment }
       }
       const optional = { upsert: true }
       const result = await comment_collection.updateOne(query, update, optional);
-      console.log('comment::', result)
+      // console.log('comment::', result)
       res.send(result);
     })
 
@@ -878,11 +943,12 @@ Limit your reply to about 200 words.
       res.send(delete_Comment);
 
     })
+
     //-----------------------------Member Message page related function---------------------------//
     app.get('/appointments/doctor/list/:email', async (req, res) => {
       const { email } = req.params;
-      console.log('memberEmail::', email)
-      const findTheDoctor = await Payment_Details.aggregate([
+      // console.log('memberEmail::', email)
+      const findTheDoctor = await Booking_Details.aggregate([
         { $match: { appliedEmail: email } },
         {
           $addFields: { doctorId: { $toObjectId: '$doctor_id' } }
@@ -905,9 +971,10 @@ Limit your reply to about 200 words.
           }
         }
       ]).toArray()
-      console.log('findthedoctor::', findTheDoctor)
+      // console.log('findthedoctor::', findTheDoctor)
       res.send(findTheDoctor)
     })
+
     /// real time Chating related Functionality///
     let user = {}
     io.on('connection', (socket) => {
