@@ -20,7 +20,7 @@ const port = process.env.PORT || 4500;
 app.use(cors({
   origin: [
     'http://localhost:5174',
-    'https://doctorproject-a4e4f.web.app'
+    'https://doctorappoinmentproject.onrender.com'
   ],
   credentials: true
 }));
